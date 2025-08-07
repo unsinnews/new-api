@@ -7,6 +7,7 @@ import (
 	"one-api/common"
 	"one-api/constant"
 	"one-api/setting"
+	"one-api/setting/ratio_setting"
 	"sort"
 	"strings"
 	"sync"
@@ -70,7 +71,7 @@ func InitChannelCache() {
 	//channelsIDM = newChannelId2channel
 	for i, channel := range newChannelId2channel {
 		if channel.ChannelInfo.IsMultiKey {
-			channel.Keys = channel.getKeys()
+			channel.Keys = channel.GetKeys()
 			if channel.ChannelInfo.MultiKeyMode == constant.MultiKeyModePolling {
 				if oldChannel, ok := channelsIDM[i]; ok {
 					// 存在旧的渠道，如果是多key且轮询，保留轮询索引信息
@@ -128,12 +129,7 @@ func CacheGetRandomSatisfiedChannel(c *gin.Context, group string, model string, 
 }
 
 func getRandomSatisfiedChannel(group string, model string, retry int) (*Channel, error) {
-	if strings.HasPrefix(model, "gpt-4-gizmo") {
-		model = "gpt-4-gizmo-*"
-	}
-	if strings.HasPrefix(model, "gpt-4o-gizmo") {
-		model = "gpt-4o-gizmo-*"
-	}
+	model = ratio_setting.FormatMatchingModelName(model)
 
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
