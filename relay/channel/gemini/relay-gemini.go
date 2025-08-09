@@ -184,7 +184,7 @@ func CovertGemini2OpenAI(textRequest dto.GeneralOpenAIRequest, info *relaycommon
 		GenerationConfig: dto.GeminiChatGenerationConfig{
 			Temperature:     textRequest.Temperature,
 			TopP:            textRequest.TopP,
-			MaxOutputTokens: textRequest.MaxTokens,
+			MaxOutputTokens: textRequest.GetMaxTokens(),
 			Seed:            int64(textRequest.Seed),
 		},
 	}
@@ -835,6 +835,7 @@ func streamResponseGeminiChat2OpenAI(geminiResponse *dto.GeminiChatResponse) (*d
 					call.SetIndex(len(choice.Delta.ToolCalls))
 					choice.Delta.ToolCalls = append(choice.Delta.ToolCalls, *call)
 				}
+
 			} else if part.Thought {
 				isThought = true
 				texts = append(texts, part.Text)
@@ -895,6 +896,7 @@ func GeminiChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *
 	responseText := strings.Builder{}
 	var usage = &dto.Usage{}
 	var imageCount int
+	finishReason := constant.FinishReasonStop
 
 	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
 		var geminiResponse dto.GeminiChatResponse
@@ -936,9 +938,21 @@ func GeminiChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *
 
 		if info.SendResponseCount == 0 {
 			// send first response
-			err = handleStream(c, info, helper.GenerateStartEmptyResponse(id, createAt, info.UpstreamModelName, nil))
-			if err != nil {
-				common.LogError(c, err.Error())
+			emptyResponse := helper.GenerateStartEmptyResponse(id, createAt, info.UpstreamModelName, nil)
+			if response.IsToolCall() {
+				emptyResponse.Choices[0].Delta.ToolCalls = make([]dto.ToolCallResponse, 1)
+				emptyResponse.Choices[0].Delta.ToolCalls[0] = *response.GetFirstToolCall()
+				emptyResponse.Choices[0].Delta.ToolCalls[0].Function.Arguments = ""
+				finishReason = constant.FinishReasonToolCalls
+				err = handleStream(c, info, emptyResponse)
+				if err != nil {
+					common.LogError(c, err.Error())
+				}
+
+				response.ClearToolCalls()
+				if response.IsFinished() {
+					response.Choices[0].FinishReason = nil
+				}
 			}
 		}
 
@@ -947,7 +961,7 @@ func GeminiChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *
 			common.LogError(c, err.Error())
 		}
 		if isStop {
-			_ = handleStream(c, info, helper.GenerateStopResponse(id, createAt, info.UpstreamModelName, constant.FinishReasonStop))
+			_ = handleStream(c, info, helper.GenerateStopResponse(id, createAt, info.UpstreamModelName, finishReason))
 		}
 		return true
 	})
@@ -1026,13 +1040,26 @@ func GeminiChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 	}
 
 	fullTextResponse.Usage = usage
-	jsonResponse, err := json.Marshal(fullTextResponse)
-	if err != nil {
-		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
+
+	switch info.RelayFormat {
+	case relaycommon.RelayFormatOpenAI:
+		responseBody, err = common.Marshal(fullTextResponse)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
+		}
+	case relaycommon.RelayFormatClaude:
+		claudeResp := service.ResponseOpenAI2Claude(fullTextResponse, info)
+		claudeRespStr, err := common.Marshal(claudeResp)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
+		}
+		responseBody = claudeRespStr
+	case relaycommon.RelayFormatGemini:
+		break
 	}
-	c.Writer.Header().Set("Content-Type", "application/json")
-	c.Writer.WriteHeader(resp.StatusCode)
-	c.Writer.Write(jsonResponse)
+
+	common.IOCopyBytesGracefully(c, resp, responseBody)
+
 	return &usage, nil
 }
 
@@ -1044,7 +1071,7 @@ func GeminiEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(readErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
-	var geminiResponse dto.GeminiEmbeddingResponse
+	var geminiResponse dto.GeminiBatchEmbeddingResponse
 	if jsonErr := common.Unmarshal(responseBody, &geminiResponse); jsonErr != nil {
 		return nil, types.NewOpenAIError(jsonErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
@@ -1052,14 +1079,16 @@ func GeminiEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	// convert to openai format response
 	openAIResponse := dto.OpenAIEmbeddingResponse{
 		Object: "list",
-		Data: []dto.OpenAIEmbeddingResponseItem{
-			{
-				Object:    "embedding",
-				Embedding: geminiResponse.Embedding.Values,
-				Index:     0,
-			},
-		},
-		Model: info.UpstreamModelName,
+		Data:   make([]dto.OpenAIEmbeddingResponseItem, 0, len(geminiResponse.Embeddings)),
+		Model:  info.UpstreamModelName,
+	}
+
+	for i, embedding := range geminiResponse.Embeddings {
+		openAIResponse.Data = append(openAIResponse.Data, dto.OpenAIEmbeddingResponseItem{
+			Object:    "embedding",
+			Embedding: embedding.Values,
+			Index:     i,
+		})
 	}
 
 	// calculate usage

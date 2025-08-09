@@ -235,6 +235,12 @@ func InitLogDB() (err error) {
 }
 
 func migrateDB() error {
+	// 修复旧版本留下的唯一索引，允许软删除后重新插入同名记录
+	if common.UsingMySQL {
+		// 旧索引可能不存在，忽略删除错误即可
+		_ = DB.Exec("ALTER TABLE models DROP INDEX uk_model_name;").Error
+		_ = DB.Exec("ALTER TABLE vendors DROP INDEX uk_vendor_name;").Error
+	}
 	if !common.UsingPostgreSQL {
 		return migrateDBFast()
 	}
@@ -250,6 +256,9 @@ func migrateDB() error {
 		&TopUp{},
 		&QuotaData{},
 		&Task{},
+		&Model{},
+		&Vendor{},
+		&PrefillGroup{},
 		&Setup{},
 		&TwoFA{},
 		&TwoFABackupCode{},
@@ -261,6 +270,12 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	// 修复旧版本留下的唯一索引，允许软删除后重新插入同名记录
+	if common.UsingMySQL {
+		_ = DB.Exec("ALTER TABLE models DROP INDEX uk_model_name;").Error
+		_ = DB.Exec("ALTER TABLE vendors DROP INDEX uk_vendor_name;").Error
+	}
+
 	var wg sync.WaitGroup
 
 	migrations := []struct {
@@ -278,6 +293,9 @@ func migrateDBFast() error {
 		{&TopUp{}, "TopUp"},
 		{&QuotaData{}, "QuotaData"},
 		{&Task{}, "Task"},
+		{&Model{}, "Model"},
+        {&Vendor{}, "Vendor"},
+		{&PrefillGroup{}, "PrefillGroup"},
 		{&Setup{}, "Setup"},
 		{&TwoFA{}, "TwoFA"},
 		{&TwoFABackupCode{}, "TwoFABackupCode"},

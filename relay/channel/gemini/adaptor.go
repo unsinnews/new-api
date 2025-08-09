@@ -114,12 +114,15 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if strings.HasPrefix(info.UpstreamModelName, "text-embedding") ||
 		strings.HasPrefix(info.UpstreamModelName, "embedding") ||
 		strings.HasPrefix(info.UpstreamModelName, "gemini-embedding") {
-		return fmt.Sprintf("%s/%s/models/%s:embedContent", info.BaseUrl, version, info.UpstreamModelName), nil
+		return fmt.Sprintf("%s/%s/models/%s:batchEmbedContents", info.BaseUrl, version, info.UpstreamModelName), nil
 	}
 
 	action := "generateContent"
 	if info.IsStream {
 		action = "streamGenerateContent?alt=sse"
+		if info.RelayMode == constant.RelayModeGemini {
+			info.DisablePing = true
+		}
 	}
 	return fmt.Sprintf("%s/%s/models/%s:%s", info.BaseUrl, version, info.UpstreamModelName, action), nil
 }
@@ -156,29 +159,35 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 	if len(inputs) == 0 {
 		return nil, errors.New("input is empty")
 	}
-
-	// only process the first input
-	geminiRequest := dto.GeminiEmbeddingRequest{
-		Content: dto.GeminiChatContent{
-			Parts: []dto.GeminiPart{
-				{
-					Text: inputs[0],
+	// process all inputs
+	geminiRequests := make([]map[string]interface{}, 0, len(inputs))
+	for _, input := range inputs {
+		geminiRequest := map[string]interface{}{
+			"model": fmt.Sprintf("models/%s", info.UpstreamModelName),
+			"content": dto.GeminiChatContent{
+				Parts: []dto.GeminiPart{
+					{
+						Text: input,
+					},
 				},
 			},
-		},
-	}
-
-	// set specific parameters for different models
-	// https://ai.google.dev/api/embeddings?hl=zh-cn#method:-models.embedcontent
-	switch info.UpstreamModelName {
-	case "text-embedding-004":
-		// except embedding-001 supports setting `OutputDimensionality`
-		if request.Dimensions > 0 {
-			geminiRequest.OutputDimensionality = request.Dimensions
 		}
+
+		// set specific parameters for different models
+		// https://ai.google.dev/api/embeddings?hl=zh-cn#method:-models.embedcontent
+		switch info.UpstreamModelName {
+		case "text-embedding-004","gemini-embedding-exp-03-07","gemini-embedding-001":
+			// Only newer models introduced after 2024 support OutputDimensionality
+			if request.Dimensions > 0 {
+				geminiRequest["outputDimensionality"] = request.Dimensions
+			}
+		}
+		geminiRequests = append(geminiRequests, geminiRequest)
 	}
 
-	return geminiRequest, nil
+	return map[string]interface{}{
+		"requests": geminiRequests,
+	}, nil
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
@@ -193,7 +202,6 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
 	if info.RelayMode == constant.RelayModeGemini {
 		if info.IsStream {
-			info.DisablePing = true
 			return GeminiTextGenerationStreamHandler(c, info, resp)
 		} else {
 			return GeminiTextGenerationHandler(c, info, resp)

@@ -78,6 +78,8 @@ func (r *GeneralOpenAIRequest) GetSystemRoleName() string {
 		if !strings.HasPrefix(r.Model, "o1-mini") && !strings.HasPrefix(r.Model, "o1-preview") {
 			return "developer"
 		}
+	} else if strings.HasPrefix(r.Model, "gpt-5") {
+		return "developer"
 	}
 	return "system"
 }
@@ -99,8 +101,11 @@ type StreamOptions struct {
 	IncludeUsage bool `json:"include_usage,omitempty"`
 }
 
-func (r *GeneralOpenAIRequest) GetMaxTokens() int {
-	return int(r.MaxTokens)
+func (r *GeneralOpenAIRequest) GetMaxTokens() uint {
+	if r.MaxCompletionTokens != 0 {
+		return r.MaxCompletionTokens
+	}
+	return r.MaxTokens
 }
 
 func (r *GeneralOpenAIRequest) ParseInput() []string {
