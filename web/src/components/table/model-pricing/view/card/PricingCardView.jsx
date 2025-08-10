@@ -81,7 +81,17 @@ const PricingCardView = ({
         </div>
       );
     }
-    // 优先使用供应商图标
+    // 1) 优先使用模型自定义图标
+    if (model.icon) {
+      return (
+        <div className={CARD_STYLES.container}>
+          <div className={CARD_STYLES.icon}>
+            {getLobeHubIcon(model.icon, 32)}
+          </div>
+        </div>
+      );
+    }
+    // 2) 退化为供应商图标
     if (model.vendor_icon) {
       return (
         <div className={CARD_STYLES.container}>
@@ -126,7 +136,7 @@ const PricingCardView = ({
       groupRatio,
       tokenUnit,
       displayPrice,
-      currency
+      currency,
     });
     return formatPriceInfo(priceData, t);
   };
@@ -134,13 +144,24 @@ const PricingCardView = ({
   // 渲染标签
   const renderTags = (record) => {
     // 计费类型标签（左边）
-    const billingType = record.quota_type === 1 ? 'teal' : 'violet';
-    const billingText = record.quota_type === 1 ? t('按次计费') : t('按量计费');
-    const billingTag = (
-      <Tag key="billing" shape='circle' color={billingType} size='small'>
-        {billingText}
+    let billingTag = (
+      <Tag key="billing" shape='circle' color='white' size='small'>
+        -
       </Tag>
     );
+    if (record.quota_type === 1) {
+      billingTag = (
+        <Tag key="billing" shape='circle' color='teal' size='small'>
+          {t('按次计费')}
+        </Tag>
+      );
+    } else if (record.quota_type === 0) {
+      billingTag = (
+        <Tag key="billing" shape='circle' color='violet' size='small'>
+          {t('按量计费')}
+        </Tag>
+      );
+    }
 
     // 自定义标签（右边）
     const customTags = [];
@@ -161,7 +182,7 @@ const PricingCardView = ({
           {billingTag}
         </div>
         <div className="flex items-center gap-1">
-          {renderLimitedItems({
+          {customTags.length > 0 && renderLimitedItems({
             items: customTags.map((tag, idx) => ({ key: `custom-${idx}`, element: tag })),
             renderItem: (item, idx) => item.element,
             maxDisplay: 3
@@ -292,7 +313,7 @@ const PricingCardView = ({
                           {t('补全')}: {model.quota_type === 0 ? parseFloat(model.completion_ratio.toFixed(3)) : t('无')}
                         </div>
                         <div>
-                          {t('分组')}: {groupRatio[selectedGroup]}
+                          {t('分组')}: {priceData.usedGroupRatio}
                         </div>
                       </div>
                     </div>
