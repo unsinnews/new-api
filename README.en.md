@@ -100,7 +100,7 @@ This version supports multiple models, please refer to [API Documentation-Relay 
 For detailed configuration instructions, please refer to [Installation Guide-Environment Variables Configuration](https://docs.newapi.pro/installation/environment-variables):
 
 - `GENERATE_DEFAULT_TOKEN`: Whether to generate initial tokens for newly registered users, default is `false`
-- `STREAMING_TIMEOUT`: Streaming response timeout, default is 120 seconds
+- `STREAMING_TIMEOUT`: Streaming response timeout, default is 300 seconds
 - `DIFY_DEBUG`: Whether to output workflow and node information for Dify channels, default is `true`
 - `FORCE_STREAM_OPTION`: Whether to override client stream_options parameter, default is `true`
 - `GET_MEDIA_TOKEN`: Whether to count image tokens, default is `true`
@@ -189,23 +189,27 @@ If you have any questions, please refer to [Help and Support](https://docs.newap
 - [Issue Feedback](https://docs.newapi.pro/support/feedback-issues)
 - [FAQ](https://docs.newapi.pro/support/faq)
 
-## 🤝 Trusted Partners
-
+<h2>🤝 Trusted Partners</h2>
+<p id="premium-sponsors">&nbsp;</p>
+<p align="center"><strong>No particular order</strong></p>
 <p align="center">
-  <a href="https://www.cherry-ai.com/" target="_blank"><img
-    src="./docs/images/cherry-studio.svg" alt="Cherry Studio" height="58"
+  <a href="https://www.cherry-ai.com/" target=_blank><img
+    src="./docs/images/cherry-studio.png" alt="Cherry Studio" height="120"
   /></a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://bda.pku.edu.cn/" target="_blank"><img
-    src="./docs/images/pku.png" alt="Peking University" height="58"
+  <a href="https://bda.pku.edu.cn/" target=_blank><img
+    src="./docs/images/pku.png" alt="Peking University" height="120"
   /></a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://www.compshare.cn/?ytag=GPU_yy_gh_newapi" target="_blank"><img
-    src="./docs/images/ucloud.svg" alt="UCloud" height="58"
+  <a href="https://www.compshare.cn/?ytag=GPU_yy_gh_newapi" target=_blank><img
+    src="./docs/images/ucloud.png" alt="UCloud" height="120"
+  /></a>
+  <a href="https://www.aliyun.com/" target=_blank><img
+    src="./docs/images/aliyun.png" alt="Alibaba Cloud" height="120"
+  /></a>
+  <a href="https://io.net/" target=_blank><img
+    src="./docs/images/io-net.png" alt="IO.NET" height="120"
   /></a>
 </p>
-
-<p align="center"><em>No particular order</em></p>
+<p>&nbsp;</p>
 
 ## 🌟 Star History
 

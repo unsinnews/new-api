@@ -100,7 +100,7 @@ New API提供了丰富的功能，详细特性请参考[特性说明](https://do
 详细配置说明请参考[安装指南-环境变量配置](https://docs.newapi.pro/installation/environment-variables)：
 
 - `GENERATE_DEFAULT_TOKEN`：是否为新注册用户生成初始令牌，默认为 `false`
-- `STREAMING_TIMEOUT`：流式回复超时时间，默认120秒
+- `STREAMING_TIMEOUT`：流式回复超时时间，默认300秒
 - `DIFY_DEBUG`：Dify渠道是否输出工作流和节点信息，默认 `true`
 - `FORCE_STREAM_OPTION`：是否覆盖客户端stream_options参数，默认 `true`
 - `GET_MEDIA_TOKEN`：是否统计图片token，默认 `true`
@@ -188,23 +188,27 @@ docker run --name new-api -d --restart always -p 3000:3000 -e SQL_DSN="root:1234
 - [反馈问题](https://docs.newapi.pro/support/feedback-issues)
 - [常见问题](https://docs.newapi.pro/support/faq)
 
-## 🤝 我们信任的合作伙伴
-
+<h2>🤝 我们信任的合作伙伴</h2>
+<p id="premium-sponsors">&nbsp;</p>
+<p align="center"><strong>排名不分先后</strong></p>
 <p align="center">
-  <a href="https://www.cherry-ai.com/" target="_blank"><img
-    src="./docs/images/cherry-studio.svg" alt="Cherry Studio" height="58"
+  <a href="https://www.cherry-ai.com/" target=_blank><img
+    src="./docs/images/cherry-studio.png" alt="Cherry Studio" height="120"
   /></a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://bda.pku.edu.cn/" target="_blank"><img
-    src="./docs/images/pku.png" alt="北京大学" height="58"
+  <a href="https://bda.pku.edu.cn/" target=_blank><img
+    src="./docs/images/pku.png" alt="北京大学" height="120"
   /></a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://www.compshare.cn/?ytag=GPU_yy_gh_newapi" target="_blank"><img
-    src="./docs/images/ucloud.svg" alt="UCloud 优刻得" height="58"
+  <a href="https://www.compshare.cn/?ytag=GPU_yy_gh_newapi" target=_blank><img
+    src="./docs/images/ucloud.png" alt="UCloud 优刻得" height="120"
+  /></a>
+  <a href="https://www.aliyun.com/" target=_blank><img
+    src="./docs/images/aliyun.png" alt="阿里云" height="120"
+  /></a>
+  <a href="https://io.net/" target=_blank><img
+    src="./docs/images/io-net.png" alt="IO.NET" height="120"
   /></a>
 </p>
-
-<p align="center"><em>排名不分先后</em></p>
+<p>&nbsp;</p>
 
 ## 🌟 Star History
 
