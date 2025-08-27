@@ -18,11 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useContext, useEffect, useState } from 'react';
-import { Button, Typography, Tag, Input, ScrollList, ScrollItem } from '@douyinfe/semi-ui';
+import { Button, Typography, Input, ScrollList, ScrollItem } from '@douyinfe/semi-ui';
 import { API, showError, copy, showSuccess } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { API_ENDPOINTS } from '../../constants/common.constant';
 import { StatusContext } from '../../context/Status';
+import { useActualTheme } from '../../context/Theme';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
 import { IconGithubLogo, IconPlay, IconFile, IconCopy } from '@douyinfe/semi-icons';
@@ -35,13 +36,14 @@ const { Text } = Typography;
 const Home = () => {
   const { t, i18n } = useTranslation();
   const [statusState] = useContext(StatusContext);
+  const actualTheme = useActualTheme();
   const [homePageContentLoaded, setHomePageContentLoaded] = useState(false);
   const [homePageContent, setHomePageContent] = useState('');
   const [noticeVisible, setNoticeVisible] = useState(false);
   const isMobile = useIsMobile();
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
   const docsLink = statusState?.status?.docs_link || '';
-  const serverAddress = statusState?.status?.server_address || window.location.origin;
+  const serverAddress = statusState?.status?.server_address || `${window.location.origin}`;
   const endpointItems = API_ENDPOINTS.map((e) => ({ value: e }));
   const [endpointIndex, setEndpointIndex] = useState(0);
   const isChinese = i18n.language.startsWith('zh');
@@ -62,9 +64,8 @@ const Home = () => {
       if (data.startsWith('https://')) {
         const iframe = document.querySelector('iframe');
         if (iframe) {
-          const theme = localStorage.getItem('theme-mode') || 'light';
           iframe.onload = () => {
-            iframe.contentWindow.postMessage({ themeMode: theme }, '*');
+            iframe.contentWindow.postMessage({ themeMode: actualTheme }, '*');
             iframe.contentWindow.postMessage({ lang: i18n.language }, '*');
           };
         }

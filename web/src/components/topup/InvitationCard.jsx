@@ -48,7 +48,7 @@ const InvitationCard = ({
         </Avatar>
         <div>
           <Typography.Text className="text-lg font-medium">{t('邀请奖励')}</Typography.Text>
-          <div className="text-xs text-gray-600 dark:text-gray-400">{t('邀请好友获得额外奖励')}</div>
+          <div className="text-xs">{t('邀请好友获得额外奖励')}</div>
         </div>
       </div>
 
@@ -89,7 +89,7 @@ const InvitationCard = ({
                 <div className='grid grid-cols-3 gap-6 mt-4'>
                   {/* 待使用收益 */}
                   <div className='text-center'>
-                    <div className='text-2xl font-bold mb-2' style={{ color: 'white' }}>
+                    <div className='text-base sm:text-2xl font-bold mb-2' style={{ color: 'white' }}>
                       {renderQuota(userState?.user?.aff_quota || 0)}
                     </div>
                     <div className='flex items-center justify-center text-sm'>
@@ -100,7 +100,7 @@ const InvitationCard = ({
 
                   {/* 总收益 */}
                   <div className='text-center'>
-                    <div className='text-2xl font-bold mb-2' style={{ color: 'white' }}>
+                    <div className='text-base sm:text-2xl font-bold mb-2' style={{ color: 'white' }}>
                       {renderQuota(userState?.user?.aff_history_quota || 0)}
                     </div>
                     <div className='flex items-center justify-center text-sm'>
@@ -111,7 +111,7 @@ const InvitationCard = ({
 
                   {/* 邀请人数 */}
                   <div className='text-center'>
-                    <div className='text-2xl font-bold mb-2' style={{ color: 'white' }}>
+                    <div className='text-base sm:text-2xl font-bold mb-2' style={{ color: 'white' }}>
                       {userState?.user?.aff_count || 0}
                     </div>
                     <div className='flex items-center justify-center text-sm'>

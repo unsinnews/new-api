@@ -48,12 +48,13 @@ const (
 	ErrorCodeGenRelayInfoFailed ErrorCode = "gen_relay_info_failed"
 
 	// channel error
-	ErrorCodeChannelNoAvailableKey       ErrorCode = "channel:no_available_key"
-	ErrorCodeChannelParamOverrideInvalid ErrorCode = "channel:param_override_invalid"
-	ErrorCodeChannelModelMappedError     ErrorCode = "channel:model_mapped_error"
-	ErrorCodeChannelAwsClientError       ErrorCode = "channel:aws_client_error"
-	ErrorCodeChannelInvalidKey           ErrorCode = "channel:invalid_key"
-	ErrorCodeChannelResponseTimeExceeded ErrorCode = "channel:response_time_exceeded"
+	ErrorCodeChannelNoAvailableKey        ErrorCode = "channel:no_available_key"
+	ErrorCodeChannelParamOverrideInvalid  ErrorCode = "channel:param_override_invalid"
+	ErrorCodeChannelHeaderOverrideInvalid ErrorCode = "channel:header_override_invalid"
+	ErrorCodeChannelModelMappedError      ErrorCode = "channel:model_mapped_error"
+	ErrorCodeChannelAwsClientError        ErrorCode = "channel:aws_client_error"
+	ErrorCodeChannelInvalidKey            ErrorCode = "channel:invalid_key"
+	ErrorCodeChannelResponseTimeExceeded  ErrorCode = "channel:response_time_exceeded"
 
 	// client request error
 	ErrorCodeReadRequestBodyFailed ErrorCode = "read_request_body_failed"
@@ -233,7 +234,7 @@ func NewErrorWithStatusCode(err error, errorCode ErrorCode, statusCode int, ops 
 func WithOpenAIError(openAIError OpenAIError, statusCode int, ops ...NewAPIErrorOptions) *NewAPIError {
 	code, ok := openAIError.Code.(string)
 	if !ok {
-		if openAIError.Code == nil {
+		if openAIError.Code != nil {
 			code = fmt.Sprintf("%v", openAIError.Code)
 		} else {
 			code = "unknown_error"
