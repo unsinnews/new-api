@@ -17,24 +17,36 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { StatusContext } from '../../context/Status';
+import { useState, useEffect, useRef } from 'react';
 
-const SetupCheck = ({ children }) => {
-  const [statusState] = useContext(StatusContext);
-  const location = useLocation();
+/**
+ * 检测容器宽度的 Hook
+ * @returns {[ref, width]} 容器引用和当前宽度
+ */
+export const useContainerWidth = () => {
+  const [width, setWidth] = useState(0);
+  const ref = useRef(null);
 
   useEffect(() => {
-    if (
-      statusState?.status?.setup === false &&
-      location.pathname !== '/setup'
-    ) {
-      window.location.href = '/setup';
-    }
-  }, [statusState?.status?.setup, location.pathname]);
+    const element = ref.current;
+    if (!element) return;
 
-  return children;
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        const { width: newWidth } = entry.contentRect;
+        setWidth(newWidth);
+      }
+    });
+
+    resizeObserver.observe(element);
+
+    // 初始化宽度
+    setWidth(element.getBoundingClientRect().width);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  return [ref, width];
 };
-
-export default SetupCheck;
