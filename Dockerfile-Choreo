@@ -1,0 +1,3 @@
+FROM calciumion/new-api:latest
+
+USER 10014
