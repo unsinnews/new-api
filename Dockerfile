@@ -31,5 +31,6 @@ RUN apk upgrade --no-cache \
 
 COPY --from=builder2 /build/one-api /
 EXPOSE 3000
+USER 10014
 WORKDIR /data
 ENTRYPOINT ["/one-api"]
