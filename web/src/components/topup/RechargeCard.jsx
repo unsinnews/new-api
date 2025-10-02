@@ -368,8 +368,8 @@ const RechargeCard = ({
                                 fontSize: '12px', 
                                 margin: '4px 0' 
                               }}>
-                                {t('实付')} {actualPay.toFixed(2)}，
-                                {hasDiscount ? `${t('节省')} ${save.toFixed(2)}` : `${t('节省')} 0.00`}
+                                {t('实付')} ${actualPay.toFixed(2)}，
+                                {hasDiscount ? `${t('节省')} $${save.toFixed(2)}` : `${t('节省')} $0.00`}
                               </div>
                             </div>
                           </Card>
