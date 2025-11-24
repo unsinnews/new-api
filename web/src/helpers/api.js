@@ -118,7 +118,6 @@ export const buildApiPayload = (
     model: inputs.model,
     group: inputs.group,
     messages: processedMessages,
-    group: inputs.group,
     stream: inputs.stream,
   };
 
@@ -133,12 +132,12 @@ export const buildApiPayload = (
   };
 
   Object.entries(parameterMappings).forEach(([key, param]) => {
-    if (
-      parameterEnabled[key] &&
-      inputs[param] !== undefined &&
-      inputs[param] !== null
-    ) {
-      payload[param] = inputs[param];
+    const enabled = parameterEnabled[key];
+    const value = inputs[param];
+    const hasValue = value !== undefined && value !== null;
+
+    if (enabled && hasValue) {
+      payload[param] = value;
     }
   });
 
@@ -230,6 +229,17 @@ export async function getOAuthState() {
     showError(message);
     return '';
   }
+}
+
+export async function onDiscordOAuthClicked(client_id) {
+  const state = await getOAuthState();
+  if (!state) return;
+  const redirect_uri = `${window.location.origin}/oauth/discord`;
+  const response_type = 'code';
+  const scope = 'identify+openid';
+  window.open(
+    `https://discord.com/oauth2/authorize?client_id=${client_id}&redirect_uri=${redirect_uri}&response_type=${response_type}&scope=${scope}&state=${state}`,
+  );
 }
 
 export async function onOIDCClicked(auth_url, client_id, openInNewTab = false) {
