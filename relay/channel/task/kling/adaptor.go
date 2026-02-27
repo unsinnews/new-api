@@ -2,7 +2,6 @@ package kling
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
+	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
 )
@@ -97,6 +97,7 @@ type responsePayload struct {
 // ============================
 
 type TaskAdaptor struct {
+	taskcommon.BaseBilling
 	ChannelType int
 	apiKey      string
 	baseURL     string
@@ -149,14 +150,14 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	}
 	req := v.(relaycommon.TaskSubmitReq)
 
-	body, err := a.convertToRequestPayload(&req)
+	body, err := a.convertToRequestPayload(&req, info)
 	if err != nil {
 		return nil, err
 	}
 	if body.Image == "" && body.ImageTail == "" {
 		c.Set("action", constant.TaskActionTextGenerate)
 	}
-	data, err := json.Marshal(body)
+	data, err := common.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -180,18 +181,18 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 
 	var kResp responsePayload
-	err = json.Unmarshal(responseBody, &kResp)
+	err = common.Unmarshal(responseBody, &kResp)
 	if err != nil {
 		taskErr = service.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
 		return
 	}
 	if kResp.Code != 0 {
-		taskErr = service.TaskErrorWrapperLocal(fmt.Errorf(kResp.Message), "task_failed", http.StatusBadRequest)
+		taskErr = service.TaskErrorWrapperLocal(fmt.Errorf("%s", kResp.Message), "task_failed", http.StatusBadRequest)
 		return
 	}
 	ov := dto.NewOpenAIVideo()
-	ov.ID = kResp.Data.TaskId
-	ov.TaskID = kResp.Data.TaskId
+	ov.ID = info.PublicTaskID
+	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
 	c.JSON(http.StatusOK, ov)
@@ -199,7 +200,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 }
 
 // FetchTask fetch task status
-func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any) (*http.Response, error) {
+func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy string) (*http.Response, error) {
 	taskID, ok := body["task_id"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid task_id")
@@ -228,7 +229,11 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any) (*http
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("User-Agent", "kling-sdk/1.0")
 
-	return service.GetHttpClient().Do(req)
+	client, err := service.GetHttpClientWithProxy(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("new proxy http client failed: %w", err)
+	}
+	return client.Do(req)
 }
 
 func (a *TaskAdaptor) GetModelList() []string {
@@ -243,15 +248,15 @@ func (a *TaskAdaptor) GetChannelName() string {
 // helpers
 // ============================
 
-func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*requestPayload, error) {
+func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayInfo) (*requestPayload, error) {
 	r := requestPayload{
 		Prompt:         req.Prompt,
 		Image:          req.Image,
-		Mode:           defaultString(req.Mode, "std"),
-		Duration:       fmt.Sprintf("%d", defaultInt(req.Duration, 5)),
+		Mode:           taskcommon.DefaultString(req.Mode, "std"),
+		Duration:       fmt.Sprintf("%d", taskcommon.DefaultInt(req.Duration, 5)),
 		AspectRatio:    a.getAspectRatio(req.Size),
-		ModelName:      req.Model,
-		Model:          req.Model, // Keep consistent with model_name, double writing improves compatibility
+		ModelName:      info.UpstreamModelName,
+		Model:          info.UpstreamModelName,
 		CfgScale:       0.5,
 		StaticMask:     "",
 		DynamicMasks:   []DynamicMask{},
@@ -261,14 +266,9 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 	if r.ModelName == "" {
 		r.ModelName = "kling-v1"
+		r.Model = "kling-v1"
 	}
-	metadata := req.Metadata
-	medaBytes, err := json.Marshal(metadata)
-	if err != nil {
-		return nil, errors.Wrap(err, "metadata marshal metadata failed")
-	}
-	err = json.Unmarshal(medaBytes, &r)
-	if err != nil {
+	if err := taskcommon.UnmarshalMetadata(req.Metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
 	return &r, nil
@@ -285,20 +285,6 @@ func (a *TaskAdaptor) getAspectRatio(size string) string {
 	default:
 		return "1:1"
 	}
-}
-
-func defaultString(s, def string) string {
-	if strings.TrimSpace(s) == "" {
-		return def
-	}
-	return s
-}
-
-func defaultInt(v int, def int) int {
-	if v == 0 {
-		return def
-	}
-	return v
 }
 
 // ============================
@@ -336,13 +322,13 @@ func (a *TaskAdaptor) createJWTTokenWithKey(apiKey string) (string, error) {
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
 	taskInfo := &relaycommon.TaskInfo{}
 	resPayload := responsePayload{}
-	err := json.Unmarshal(respBody, &resPayload)
+	err := common.Unmarshal(respBody, &resPayload)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal response body")
 	}
 	taskInfo.Code = resPayload.Code
 	taskInfo.TaskID = resPayload.Data.TaskId
-	taskInfo.Reason = resPayload.Message
+	taskInfo.Reason = resPayload.Data.TaskStatusMsg
 	//任务状态，枚举值：submitted（已提交）、processing（处理中）、succeed（成功）、failed（失败）
 	status := resPayload.Data.TaskStatus
 	switch status {
@@ -370,7 +356,7 @@ func isNewAPIRelay(apiKey string) bool {
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
 	var klingResp responsePayload
-	if err := json.Unmarshal(originTask.Data, &klingResp); err != nil {
+	if err := common.Unmarshal(originTask.Data, &klingResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal kling task data failed")
 	}
 
@@ -397,6 +383,5 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 			Code:    fmt.Sprintf("%d", klingResp.Code),
 		}
 	}
-	jsonData, _ := common.Marshal(openAIVideo)
-	return jsonData, nil
+	return common.Marshal(openAIVideo)
 }

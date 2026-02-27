@@ -1,6 +1,7 @@
 package gemini
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 
@@ -36,22 +37,12 @@ func GeminiTextGenerationHandler(c *gin.Context, info *relaycommon.RelayInfo, re
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
+	if len(geminiResponse.Candidates) == 0 && geminiResponse.PromptFeedback != nil && geminiResponse.PromptFeedback.BlockReason != nil {
+		common.SetContextKey(c, constant.ContextKeyAdminRejectReason, fmt.Sprintf("gemini_block_reason=%s", *geminiResponse.PromptFeedback.BlockReason))
+	}
+
 	// 计算使用量（基于 UsageMetadata）
-	usage := dto.Usage{
-		PromptTokens:     geminiResponse.UsageMetadata.PromptTokenCount,
-		CompletionTokens: geminiResponse.UsageMetadata.CandidatesTokenCount + geminiResponse.UsageMetadata.ThoughtsTokenCount,
-		TotalTokens:      geminiResponse.UsageMetadata.TotalTokenCount,
-	}
-
-	usage.CompletionTokenDetails.ReasoningTokens = geminiResponse.UsageMetadata.ThoughtsTokenCount
-
-	for _, detail := range geminiResponse.UsageMetadata.PromptTokensDetails {
-		if detail.Modality == "AUDIO" {
-			usage.PromptTokensDetails.AudioTokens = detail.TokenCount
-		} else if detail.Modality == "TEXT" {
-			usage.PromptTokensDetails.TextTokens = detail.TokenCount
-		}
-	}
+	usage := buildUsageFromGeminiMetadata(geminiResponse.UsageMetadata, info.GetEstimatePromptTokens())
 
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
@@ -70,12 +61,7 @@ func NativeGeminiEmbeddingHandler(c *gin.Context, resp *http.Response, info *rel
 		println(string(responseBody))
 	}
 
-	usage := &dto.Usage{
-		PromptTokens: info.PromptTokens,
-		TotalTokens:  info.PromptTokens,
-	}
-
-	common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
+	usage := service.ResponseText2Usage(c, "", info.UpstreamModelName, info.GetEstimatePromptTokens())
 
 	if info.IsGeminiBatchEmbedding {
 		var geminiResponse dto.GeminiBatchEmbeddingResponse
@@ -100,10 +86,10 @@ func GeminiTextGenerationStreamHandler(c *gin.Context, info *relaycommon.RelayIn
 	helper.SetEventStreamHeaders(c)
 
 	return geminiStreamHandler(c, info, resp, func(data string, geminiResponse *dto.GeminiChatResponse) bool {
-		// 直接发送 GeminiChatResponse 响应
 		err := helper.StringData(c, data)
 		if err != nil {
-			logger.LogError(c, err.Error())
+			logger.LogError(c, "failed to write stream data: "+err.Error())
+			return false
 		}
 		info.SendResponseCount++
 		return true

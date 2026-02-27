@@ -2,22 +2,21 @@ package vertex
 
 import (
 	"bytes"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-
 	"github.com/gin-gonic/gin"
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
+	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	vertexcore "github.com/QuantumNous/new-api/relay/channel/vertex"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
@@ -63,6 +62,7 @@ type operationResponse struct {
 // ============================
 
 type TaskAdaptor struct {
+	taskcommon.BaseBilling
 	ChannelType int
 	apiKey      string
 	baseURL     string
@@ -83,10 +83,10 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 // BuildRequestURL constructs the upstream URL.
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	adc := &vertexcore.Credentials{}
-	if err := json.Unmarshal([]byte(a.apiKey), adc); err != nil {
+	if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
 		return "", fmt.Errorf("failed to decode credentials: %w", err)
 	}
-	modelName := info.OriginModelName
+	modelName := info.UpstreamModelName
 	if modelName == "" {
 		modelName = "veo-3.0-generate-001"
 	}
@@ -117,17 +117,43 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 	req.Header.Set("Accept", "application/json")
 
 	adc := &vertexcore.Credentials{}
-	if err := json.Unmarshal([]byte(a.apiKey), adc); err != nil {
+	if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
 		return fmt.Errorf("failed to decode credentials: %w", err)
 	}
 
-	token, err := vertexcore.AcquireAccessToken(*adc, "")
+	proxy := ""
+	if info != nil {
+		proxy = info.ChannelSetting.Proxy
+	}
+	token, err := vertexcore.AcquireAccessToken(*adc, proxy)
 	if err != nil {
 		return fmt.Errorf("failed to acquire access token: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("x-goog-user-project", adc.ProjectID)
 	return nil
+}
+
+// EstimateBilling 根据用户请求中的 sampleCount 计算 OtherRatios。
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
+	sampleCount := 1
+	v, ok := c.Get("task_request")
+	if ok {
+		req := v.(relaycommon.TaskSubmitReq)
+		if req.Metadata != nil {
+			if sc, exists := req.Metadata["sampleCount"]; exists {
+				if i, ok := sc.(int); ok && i > 0 {
+					sampleCount = i
+				}
+				if f, ok := sc.(float64); ok && int(f) > 0 {
+					sampleCount = int(f)
+				}
+			}
+		}
+	}
+	return map[string]float64{
+		"sampleCount": float64(sampleCount),
+	}
 }
 
 // BuildRequestBody converts request into Vertex specific format.
@@ -147,14 +173,23 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			body.Parameters["storageUri"] = v
 		}
 		if v, ok := req.Metadata["sampleCount"]; ok {
-			body.Parameters["sampleCount"] = v
+			if i, ok := v.(int); ok {
+				body.Parameters["sampleCount"] = i
+			}
+			if f, ok := v.(float64); ok {
+				body.Parameters["sampleCount"] = int(f)
+			}
 		}
 	}
 	if _, ok := body.Parameters["sampleCount"]; !ok {
 		body.Parameters["sampleCount"] = 1
 	}
 
-	data, err := json.Marshal(body)
+	if body.Parameters["sampleCount"].(int) <= 0 {
+		return nil, fmt.Errorf("sampleCount must be greater than 0")
+	}
+
+	data, err := common.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -175,14 +210,19 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	_ = resp.Body.Close()
 
 	var s submitResponse
-	if err := json.Unmarshal(responseBody, &s); err != nil {
+	if err := common.Unmarshal(responseBody, &s); err != nil {
 		return "", nil, service.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
 	}
 	if strings.TrimSpace(s.Name) == "" {
 		return "", nil, service.TaskErrorWrapper(fmt.Errorf("missing operation name"), "invalid_response", http.StatusInternalServerError)
 	}
-	localID := encodeLocalTaskID(s.Name)
-	c.JSON(http.StatusOK, gin.H{"task_id": localID})
+	localID := taskcommon.EncodeLocalTaskID(s.Name)
+	ov := dto.NewOpenAIVideo()
+	ov.ID = info.PublicTaskID
+	ov.TaskID = info.PublicTaskID
+	ov.CreatedAt = time.Now().Unix()
+	ov.Model = info.OriginModelName
+	c.JSON(http.StatusOK, ov)
 	return localID, responseBody, nil
 }
 
@@ -190,12 +230,12 @@ func (a *TaskAdaptor) GetModelList() []string { return []string{"veo-3.0-generat
 func (a *TaskAdaptor) GetChannelName() string { return "vertex" }
 
 // FetchTask fetch task status
-func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any) (*http.Response, error) {
+func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy string) (*http.Response, error) {
 	taskID, ok := body["task_id"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid task_id")
 	}
-	upstreamName, err := decodeLocalTaskID(taskID)
+	upstreamName, err := taskcommon.DecodeLocalTaskID(taskID)
 	if err != nil {
 		return nil, fmt.Errorf("decode task_id failed: %w", err)
 	}
@@ -215,15 +255,15 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any) (*http
 		url = fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:fetchPredictOperation", region, project, region, modelName)
 	}
 	payload := map[string]string{"operationName": upstreamName}
-	data, err := json.Marshal(payload)
+	data, err := common.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 	adc := &vertexcore.Credentials{}
-	if err := json.Unmarshal([]byte(key), adc); err != nil {
+	if err := common.Unmarshal([]byte(key), adc); err != nil {
 		return nil, fmt.Errorf("failed to decode credentials: %w", err)
 	}
-	token, err := vertexcore.AcquireAccessToken(*adc, "")
+	token, err := vertexcore.AcquireAccessToken(*adc, proxy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire access token: %w", err)
 	}
@@ -235,12 +275,16 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any) (*http
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("x-goog-user-project", adc.ProjectID)
-	return service.GetHttpClient().Do(req)
+	client, err := service.GetHttpClientWithProxy(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("new proxy http client failed: %w", err)
+	}
+	return client.Do(req)
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
 	var op operationResponse
-	if err := json.Unmarshal(respBody, &op); err != nil {
+	if err := common.Unmarshal(respBody, &op); err != nil {
 		return nil, fmt.Errorf("unmarshal operation response failed: %w", err)
 	}
 	ti := &relaycommon.TaskInfo{}
@@ -304,7 +348,10 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
-	upstreamName, err := decodeLocalTaskID(task.TaskID)
+	// Use GetUpstreamTaskID() to get the real upstream operation name for model extraction.
+	// task.TaskID is now a public task_xxxx ID, no longer a base64-encoded upstream name.
+	upstreamTaskID := task.GetUpstreamTaskID()
+	upstreamName, err := taskcommon.DecodeLocalTaskID(upstreamTaskID)
 	if err != nil {
 		upstreamName = ""
 	}
@@ -319,8 +366,8 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	v.SetProgressStr(task.Progress)
 	v.CreatedAt = task.CreatedAt
 	v.CompletedAt = task.UpdatedAt
-	if strings.HasPrefix(task.FailReason, "data:") && len(task.FailReason) > 0 {
-		v.SetMetadata("url", task.FailReason)
+	if resultURL := task.GetResultURL(); strings.HasPrefix(resultURL, "data:") && len(resultURL) > 0 {
+		v.SetMetadata("url", resultURL)
 	}
 
 	return common.Marshal(v)
@@ -329,18 +376,6 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 // ============================
 // helpers
 // ============================
-
-func encodeLocalTaskID(name string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(name))
-}
-
-func decodeLocalTaskID(local string) (string, error) {
-	b, err := base64.RawURLEncoding.DecodeString(local)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
 
 var regionRe = regexp.MustCompile(`locations/([a-z0-9-]+)/`)
 
