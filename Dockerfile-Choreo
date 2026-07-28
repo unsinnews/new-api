@@ -1,4 +1,4 @@
-FROM calciumion/new-api:v1.0.0-rc.22
+FROM calciumion/new-api:latest
 
 RUN apt-get update && \
     apt-get install -y --only-upgrade libgnutls30 && \
